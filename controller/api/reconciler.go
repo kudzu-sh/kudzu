@@ -6,17 +6,20 @@ package api
 import (
 	"context"
 
+	"github.com/go-logr/zapr"
 	"go.uber.org/zap"
 	core "k8s.io/api/core/v1"
 	kudzu "kudzu.sh/api/kudzu/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	clog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func Build(ctx context.Context, log *zap.Logger, mgr manager.Manager) {
 	log = log.With(zap.String("reconciler", "api"))
+	clog.SetLogger(zapr.NewLogger(log))
 
 	_, err := builder.SimpleController().
 		WithManager(mgr).

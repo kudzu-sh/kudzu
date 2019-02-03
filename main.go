@@ -10,10 +10,12 @@ import (
 
 	"go.uber.org/zap"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	kudzuv1alpha1 "kudzu.sh/api/kudzu/v1alpha1"
 	apicontroller "kudzu.sh/kudzu/controller/api"
+	"kudzu.sh/kudzu/delegate"
 )
 
 type Config struct {
@@ -61,6 +63,9 @@ func main() {
 	}
 
 	scheme := mgr.GetScheme()
+	if err := apiext.AddToScheme(scheme); err != nil {
+		log.Fatal("Failed to add CRD types to scheme", zap.Error(err))
+	}
 	if err := kudzuv1alpha1.AddToScheme(scheme); err != nil {
 		log.Fatal("Failed to add API types to scheme", zap.Error(err))
 	}
@@ -70,7 +75,11 @@ func main() {
 
 	ctx := CancelOnSignal(context.Background(), log)
 
-	apicontroller.Build(ctx, log, mgr)
+	// TODO: configurable
+	dc := delegate.Config{}
+	rs := delegate.MemoryResultStorage{}
+
+	apicontroller.Build(ctx, log, mgr, dc, &rs)
 
 	log.Info("Starting manager")
 	if err := mgr.Start(ctx.Done()); err != nil {

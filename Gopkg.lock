@@ -151,6 +151,22 @@
   version = "v0.2.0"
 
 [[projects]]
+  digest = "1:c01767916c59f084bb7c41a7d5877c0f3099b1595cfa066e84ec6ad6b084dd89"
+  name = "github.com/gorilla/context"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "08b5f424b9271eedf6f9f0ce86cb9396ed337a42"
+  version = "v1.1.1"
+
+[[projects]]
+  digest = "1:bf5cf1d53d703332e9bd8984c69784645b73a938317bf5ace9aadf20ac49379a"
+  name = "github.com/gorilla/mux"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "e3702bed27f0d39777b0b37b664b6280e8ef8fbf"
+  version = "v1.6.2"
+
+[[projects]]
   branch = "master"
   digest = "1:7fdf3223c7372d1ced0b98bf53457c5e89d89aecbad9a77ba9fcc6e01f9e5621"
   name = "github.com/gregjones/httpcache"
@@ -500,6 +516,17 @@
   version = "kubernetes-1.13.2"
 
 [[projects]]
+  digest = "1:8b06dd9f107e7f50eb439698af99f40028a85ae334060f3de0171f70fde86009"
+  name = "k8s.io/apiextensions-apiserver"
+  packages = [
+    "pkg/apis/apiextensions",
+    "pkg/apis/apiextensions/v1beta1",
+  ]
+  pruneopts = "NUT"
+  revision = "7d26de67f177df719a36756e658973478df68485"
+  version = "kubernetes-1.13.2"
+
+[[projects]]
   digest = "1:67eff6b136389fceac875772fabf95f1e047efba4bc9226765399e4c7695a90a"
   name = "k8s.io/apimachinery"
   packages = [
@@ -644,15 +671,15 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:96450f58cf8c4d6fbd45dfbb999464cbae71cbe51377208efd930c4bfe03f147"
+  digest = "1:e3e6a1cf5b9853749757855123c754f39d151cb98f7d46609dc8320eb958e6ee"
   name = "kudzu.sh/api"
   packages = ["kudzu/v1alpha1"]
   pruneopts = "NUT"
-  revision = "f10f8b1f60aece7cc0959ffab68f61b5f25e6052"
+  revision = "de3075e463e08753a49ce305302691c3aca3ed9a"
 
 [[projects]]
   branch = "master"
-  digest = "1:b1bcaf465c0d133b38d6d303eeec29ff81755551d99ee5879ab09dc66d50acbe"
+  digest = "1:0ca8350d9705d0deca8de83e6b8579d79f4c13fc0345df62f754aa056b0e0321"
   name = "sigs.k8s.io/controller-runtime"
   packages = [
     "pkg/builder",
@@ -662,6 +689,7 @@
     "pkg/client/apiutil",
     "pkg/client/config",
     "pkg/controller",
+    "pkg/controller/controllerutil",
     "pkg/event",
     "pkg/handler",
     "pkg/internal/controller",
@@ -700,15 +728,24 @@
   analyzer-version = 1
   input-imports = [
     "github.com/go-logr/zapr",
+    "github.com/gorilla/mux",
     "go.uber.org/zap",
     "gopkg.in/alecthomas/kingpin.v2",
     "k8s.io/api/core/v1",
+    "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
+    "k8s.io/apimachinery/pkg/apis/meta/v1",
+    "k8s.io/apimachinery/pkg/labels",
+    "k8s.io/apimachinery/pkg/runtime",
+    "k8s.io/apimachinery/pkg/runtime/schema",
+    "k8s.io/apimachinery/pkg/util/json",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/tools/clientcmd/api",
+    "k8s.io/client-go/util/retry",
     "kudzu.sh/api/kudzu/v1alpha1",
     "sigs.k8s.io/controller-runtime/pkg/builder",
     "sigs.k8s.io/controller-runtime/pkg/client",
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil",
     "sigs.k8s.io/controller-runtime/pkg/log",
     "sigs.k8s.io/controller-runtime/pkg/manager",
     "sigs.k8s.io/controller-runtime/pkg/reconcile",

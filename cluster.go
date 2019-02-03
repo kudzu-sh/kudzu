@@ -36,7 +36,7 @@ func (c *ClusterConfig) RESTConfig(log *zap.Logger) *rest.Config {
 	if conf == nil {
 		restconf, icerr := rest.InClusterConfig()
 		if icerr != nil {
-			log.Fatal("Could not find local kubeconfig file, and in-cluster config failed", zap.Error(err))
+			log.Fatal("Could not find local kubeconfig file, and in-cluster config failed", zap.Error(icerr))
 		}
 
 		return restconf

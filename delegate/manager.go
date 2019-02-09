@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -77,11 +78,14 @@ func (m *Manager) Get(ctx context.Context, parent Object) (*Delegate, error) {
 
 func (m *Manager) Ensure(
 	ctx context.Context,
+	log *zap.Logger,
 	parent Object,
 	task string,
 	config map[string]string,
 	invalidated bool,
 ) (*Delegate, error) {
+	log.Debug("Ensuring delegate", zap.String("task", task), zap.Bool("invalidated", invalidated))
+
 	source := parent.GetSourceSpec()
 	if source.Image == nil || source.Image.Repository == "" {
 		return nil, fmt.Errorf("spec for %s doesn't specify an image", parent.GetName())
@@ -94,12 +98,16 @@ func (m *Manager) Ensure(
 
 	del, err := m.Get(ctx, parent)
 	if err != nil {
+		log.Error("Error getting current delegate", zap.Error(err))
 		return nil, err
 	}
 	if del != nil {
 		if del.ConfigMap != nil && len(config) == 0 {
 			err := m.client.Delete(ctx, del.ConfigMap)
-			return nil, err
+			if err != nil {
+				return nil, err
+			}
+			log.Info("Deleted delegate ConfigMap", zap.String("name", del.ConfigMap.Name))
 		}
 
 		if del.ConfigMap != nil && del.ConfigMap.Annotations[configAnnotation] != confHash {
@@ -111,14 +119,25 @@ func (m *Manager) Ensure(
 				return nil, err
 			}
 			del.ConfigMap = cm
+			log.Info("Updated delegate ConfigMap", zap.String("name", cm.Name))
 		}
 
-		if confHash != del.Pod.Annotations[configAnnotation] || !source.Matches(parent.GetSourceStatus()) {
+		if confHash != del.Pod.Annotations[configAnnotation] {
 			err := m.client.Delete(ctx, del.Pod)
-			return nil, err
+			if err != nil {
+				log.Error("Error deleting delegate pod", zap.String("name", del.Pod.Name), zap.Error(err))
+				return nil, err
+			}
+			log.Info("Deleted out-of-date delegate Pod", zap.String("name", del.Pod.Name))
+			return nil, nil
 		}
 	} else {
 		del = &Delegate{Parent: parent}
+	}
+
+	if !invalidated {
+		parentAnnotations := parent.GetAnnotations()
+		invalidated = confHash != parentAnnotations[configAnnotation] || !source.Matches(parent.GetSourceStatus())
 	}
 
 	if del.ConfigMap == nil && len(config) > 0 {
@@ -130,12 +149,9 @@ func (m *Manager) Ensure(
 			return nil, err
 		}
 		del.ConfigMap = cm
+		log.Info("Created delegate ConfigMap", zap.String("name", cm.Name))
 	}
 
-	if !invalidated {
-		parentAnnotations := parent.GetAnnotations()
-		invalidated = confHash != parentAnnotations[configAnnotation] || !source.Matches(parent.GetSourceStatus())
-	}
 	if del.Pod == nil && invalidated {
 		pod, err := m.podForTask(parent, task, confHash)
 		if err != nil {
@@ -145,6 +161,11 @@ func (m *Manager) Ensure(
 			return nil, err
 		}
 		del.Pod = pod
+		log.Info("Created delegate Pod", zap.String("name", pod.Name))
+	}
+
+	if del.ConfigMap == nil && del.Pod == nil {
+		return nil, nil
 	}
 
 	return del, nil
@@ -166,12 +187,19 @@ func (m *Manager) Commit(ctx context.Context, del *Delegate) error {
 	imageIDParts := strings.Split(del.Pod.Status.InitContainerStatuses[0].ImageID, "@")
 
 	sourceSpec := del.Parent.GetSourceSpec()
-	sourceStatus := del.Parent.GetSourceStatus()
-	sourceStatus.Image = &kudzu.ImageStatus{
-		Repository: sourceSpec.Image.Repository,
-		Tag:        sourceSpec.Image.Tag,
-		Hash:       imageIDParts[len(imageIDParts)-1],
+	imageTag := sourceSpec.Image.Tag
+	if imageTag == "" {
+		imageTag = "latest"
 	}
+
+	sourceStatus := &kudzu.SourceStatus{
+		Image: &kudzu.ImageStatus{
+			Repository: sourceSpec.Image.Repository,
+			Tag:        imageTag,
+			Hash:       imageIDParts[len(imageIDParts)-1],
+		},
+	}
+	del.Parent.SetSourceStatus(sourceStatus)
 
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		parentAnnotations := del.Parent.GetAnnotations()
@@ -183,10 +211,17 @@ func (m *Manager) Commit(ctx context.Context, del *Delegate) error {
 		return err
 	}
 
-	if err := m.client.Delete(ctx, del.Pod); err != nil {
-		return err
+	return m.Delete(ctx, del)
+}
+
+func (m *Manager) Delete(ctx context.Context, del *Delegate) error {
+	if del.Pod != nil {
+		if err := m.client.Delete(ctx, del.Pod); err != nil {
+			return err
+		}
+		del.Pod = nil
 	}
-	del.Pod = nil
+
 	if del.ConfigMap != nil {
 		if err := m.client.Delete(ctx, del.ConfigMap); err != nil {
 			return err
@@ -284,7 +319,8 @@ func (m *Manager) podForTask(parent Object, task string, confHash string) (*core
 					},
 				},
 			},
-			Volumes: volumes,
+			RestartPolicy: core.RestartPolicyOnFailure,
+			Volumes:       volumes,
 		},
 	}
 

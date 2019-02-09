@@ -10,10 +10,12 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 )
 
 type CallbackHandler struct {
 	Storage ResultStorage
+	Log     *zap.Logger
 }
 
 func (h *CallbackHandler) Register(router *mux.Router) {
@@ -23,8 +25,15 @@ func (h *CallbackHandler) Register(router *mux.Router) {
 func (h *CallbackHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	vars := mux.Vars(req)
-
 	hash := req.Header.Get("Kudzu-Config-Hash")
+
+	h.Log.Info(
+		"Receiving callback",
+		zap.String("kind", vars["kind"]),
+		zap.String("uid", vars["uid"]),
+		zap.String("config_hash", hash),
+	)
+
 	if hash == "" {
 		http.Error(w, "Missing Kudzu-Config-Hash header", http.StatusBadRequest)
 		return

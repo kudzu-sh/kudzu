@@ -274,6 +274,14 @@
   version = "v2.0.1"
 
 [[projects]]
+  digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  pruneopts = "NUT"
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:7c7cfeecd2b7147bcfec48a4bf622b4879e26aec145a9e373ce51d0c23b16f6b"
   name = "github.com/prometheus/client_golang"
   packages = [
@@ -327,6 +335,14 @@
   version = "v1.0.3"
 
 [[projects]]
+  digest = "1:42e8c2456d7ec0f31e182c20022e74324c4da2cb3bd9069ff9b131fe33466308"
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  pruneopts = "NUT"
+  revision = "ffdc059bfe9ce6a4e144ba849dbedead332c6053"
+  version = "v1.3.0"
+
+[[projects]]
   digest = "1:22f696cee54865fb8e9ff91df7b633f6b8f22037a8015253c6b6a71ca82219c7"
   name = "go.uber.org/atomic"
   packages = ["."]
@@ -343,7 +359,7 @@
   version = "v1.1.0"
 
 [[projects]]
-  digest = "1:85674ac609b704fd4e9f463553b6ffc3a3527a993ae0ba550eb56beaabdfe094"
+  digest = "1:da2b9a41b46b14a9d9d093413cf922dd1352743364e8ede79ba60c9b8e21ca39"
   name = "go.uber.org/zap"
   packages = [
     ".",
@@ -351,7 +367,9 @@
     "internal/bufferpool",
     "internal/color",
     "internal/exit",
+    "internal/ztest",
     "zapcore",
+    "zaptest",
   ]
   pruneopts = "NUT"
   revision = "ff33455a0e382e8a81d14dd7c922020b6b5e7982"
@@ -580,7 +598,7 @@
   version = "kubernetes-1.13.2"
 
 [[projects]]
-  digest = "1:d01436bc53abc58c01db8607d2c7c59f87e408156bdec62b004e387c81c6f1d3"
+  digest = "1:96688582b65c0b4ce4b2ea98a5a45bb2fafe1abf01c5d276a5f92eac80192a94"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -627,6 +645,7 @@
     "rest",
     "rest/watch",
     "restmapper",
+    "testing",
     "tools/auth",
     "tools/cache",
     "tools/clientcmd",
@@ -671,15 +690,15 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e3e6a1cf5b9853749757855123c754f39d151cb98f7d46609dc8320eb958e6ee"
+  digest = "1:6da5881f25da46fa2b788c984ea7c0d8a1c66b2e73021ff14f0c23de06b52612"
   name = "kudzu.sh/api"
   packages = ["kudzu/v1alpha1"]
   pruneopts = "NUT"
-  revision = "de3075e463e08753a49ce305302691c3aca3ed9a"
+  revision = "f8678edd0507a2639020e398a0830fed38ed6683"
 
 [[projects]]
   branch = "master"
-  digest = "1:0ca8350d9705d0deca8de83e6b8579d79f4c13fc0345df62f754aa056b0e0321"
+  digest = "1:d64f2d9cffd5125ccf67dcdb8d36b56ff976dcd18eda8e28ffcf1b005822f018"
   name = "sigs.k8s.io/controller-runtime"
   packages = [
     "pkg/builder",
@@ -688,6 +707,7 @@
     "pkg/client",
     "pkg/client/apiutil",
     "pkg/client/config",
+    "pkg/client/fake",
     "pkg/controller",
     "pkg/controller/controllerutil",
     "pkg/event",
@@ -729,15 +749,20 @@
   input-imports = [
     "github.com/go-logr/zapr",
     "github.com/gorilla/mux",
+    "github.com/stretchr/testify/assert",
     "go.uber.org/zap",
+    "go.uber.org/zap/zaptest",
     "gopkg.in/alecthomas/kingpin.v2",
     "k8s.io/api/core/v1",
     "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
+    "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/labels",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
+    "k8s.io/apimachinery/pkg/types",
     "k8s.io/apimachinery/pkg/util/json",
+    "k8s.io/client-go/kubernetes/scheme",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/tools/clientcmd/api",
@@ -745,6 +770,7 @@
     "kudzu.sh/api/kudzu/v1alpha1",
     "sigs.k8s.io/controller-runtime/pkg/builder",
     "sigs.k8s.io/controller-runtime/pkg/client",
+    "sigs.k8s.io/controller-runtime/pkg/client/fake",
     "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil",
     "sigs.k8s.io/controller-runtime/pkg/log",
     "sigs.k8s.io/controller-runtime/pkg/manager",

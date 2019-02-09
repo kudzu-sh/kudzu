@@ -16,6 +16,7 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -31,8 +32,6 @@ import (
 var (
 	LabelAPI       = fmt.Sprintf("%s/api", kudzu.GroupName)
 	LabelManagedBy = "app.kubernetes.io/managed-by"
-
-	FinalizerName = fmt.Sprintf("%s/api", kudzu.GroupName)
 )
 
 func Build(ctx context.Context, log *zap.Logger, mgr manager.Manager, dc delegate.Config, rs delegate.ResultStorage) {
@@ -70,7 +69,8 @@ func (r *Reconciler) Reconcile(req reconcile.Request) (reconcile.Result, error) 
 	defer cancel()
 
 	log := r.log.With(zap.String("api", req.Name))
-	log.Debug("Reconciliation requested")
+
+	log.Debug("Reconcile requested")
 
 	api := &kudzu.API{}
 	err := r.Get(ctx, req.NamespacedName, api)
@@ -89,59 +89,94 @@ func (r *Reconciler) Reconcile(req reconcile.Request) (reconcile.Result, error) 
 }
 
 func (r *Reconciler) Sync(ctx context.Context, log *zap.Logger, api *kudzu.API) (reconcile.Result, error) {
+	log.Debug("Syncing API")
+
 	crds, err := r.crds(ctx, api)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	needsUpdate := false
+	needsFullUpdate := false
+	requeue := false
 
 	if len(api.Status.Conditions) == 0 {
 		api.Status.InitializeConditions()
 		needsUpdate = true
 	}
 
+	if finalizers, changed := util.EnsureFinalizer(api.Finalizers); changed {
+		log.Debug("Added finalizer")
+		api.Finalizers = finalizers
+		needsFullUpdate = true
+	}
+
 	needsDelegate, err := r.evaluate(ctx, log, api, crds)
 	if err != nil {
+		log.Error("Error evaluating state of API", zap.Error(err))
 		return reconcile.Result{}, err
 	}
 	if needsDelegate {
 		needsUpdate = true
 	}
 
-	del, err := r.Delegates.Ensure(ctx, api, "reify-api", map[string]string{}, needsDelegate)
+	del, err := r.Delegates.Ensure(ctx, log, api, "reify-api", map[string]string{}, needsDelegate)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	if del.Pod != nil {
-		api.Status.ConditionManager().MarkFalse(
-			kudzu.APIUpdated,
-			"Updating",
-			"Created delegate Pod: %s/%s",
-			del.Pod.Namespace,
-			del.Pod.Name,
-		)
-		needsUpdate = true
-	}
+	if del != nil {
+		log.Debug("Delegate exists")
 
-	crdList := apiext.CustomResourceDefinitionList{}
-	err = r.Delegates.Result(del, r.Results, &crdList)
-	if err != delegate.ErrNotFound {
-		if err != nil {
-			// TODO: check if ErrorResult
-			log.Error("Error getting delegate result", zap.Error(err))
-			return reconcile.Result{}, err
+		if del.Pod != nil {
+			if !needsUpdate {
+				needsUpdate = !api.Status.ConditionManager().GetCondition(kudzu.APIUpdated).IsFalse()
+			}
+			api.Status.ConditionManager().MarkFalse(
+				kudzu.APIUpdated,
+				"Updating",
+				"Created delegate Pod: %s/%s",
+				del.Pod.Namespace,
+				del.Pod.Name,
+			)
 		}
 
-		if err := r.process(ctx, log, api, crdList.Items); err != nil {
-			log.Error("Error processing delegate result", zap.Error(err))
-			return reconcile.Result{}, err
-		}
-		needsUpdate = true
+		crdList := apiext.CustomResourceDefinitionList{}
+		err = r.Delegates.Result(del, r.Results, &crdList)
+		if err != delegate.ErrNotFound {
+			if err != nil {
+				// TODO: check if ErrorResult
+				log.Error("Error getting delegate result", zap.Error(err))
+				return reconcile.Result{}, err
+			}
 
-		if err := r.Delegates.Commit(ctx, del); err != nil {
-			return reconcile.Result{}, err
+			if err := r.process(ctx, log, api, crdList.Items); err != nil {
+				log.Error("Error processing delegate result", zap.Error(err))
+				return reconcile.Result{}, err
+			}
+			if err := r.Status().Update(ctx, api); err != nil {
+				log.Error("Error updating API status", zap.Error(err))
+				return reconcile.Result{}, err
+			}
+			needsUpdate = false
+
+			if err := r.Delegates.Commit(ctx, del); err != nil {
+				log.Error("Error committing delegate result", zap.Error(err))
+				return reconcile.Result{}, err
+			}
+		} else if del.Succeeded() && del.Pod.DeletionTimestamp.IsZero() {
+			log.Warn("Delegate succeeded, but no result was available")
+			if err := r.Delegates.Delete(ctx, del); err != nil {
+				log.Error("Error deleting delegate", zap.Error(err))
+				return reconcile.Result{}, err
+			}
+		} else {
+			phase := ""
+			if del.Pod != nil {
+				phase = string(del.Pod.Status.Phase)
+			}
+			log.Debug("No delegate result yet", zap.String("phase", phase))
+			requeue = true
 		}
 	}
 
@@ -150,13 +185,24 @@ func (r *Reconciler) Sync(ctx context.Context, log *zap.Logger, api *kudzu.API) 
 		needsUpdate = true
 	}
 
-	if needsUpdate {
+	if needsFullUpdate {
+		if err := r.Update(ctx, api); err != nil {
+			log.Error("Error updating API", zap.Error(err))
+			return reconcile.Result{}, err
+		}
+		log.Debug("Updated API", zap.Bool("ready", api.Status.IsReady()))
+	} else if needsUpdate {
 		if err := r.Status().Update(ctx, api); err != nil {
 			log.Error("Error updating API status", zap.Error(err))
 			return reconcile.Result{}, err
 		}
+		log.Debug("Updated API status", zap.Bool("ready", api.Status.IsReady()))
 	}
 
+	if requeue {
+		log.Debug("Requesting requeue")
+		return reconcile.Result{Requeue: true, RequeueAfter: 2 * time.Second}, nil
+	}
 	return reconcile.Result{}, nil
 }
 
@@ -216,6 +262,9 @@ func (r *Reconciler) process(
 
 	labels := crdLabels(api)
 	for _, crd := range crds {
+		if crd.Labels == nil {
+			crd.Labels = make(map[string]string, len(labels))
+		}
 		for name, label := range labels {
 			crd.Labels[name] = label
 		}
@@ -228,6 +277,13 @@ func (r *Reconciler) process(
 				log.Error("Error creating CRD", zap.String("crd", crd.Name), zap.Error(err))
 				return err
 			}
+
+			existing := apiext.CustomResourceDefinition{}
+			err := r.Get(ctx, types.NamespacedName{Name: crd.Name}, &existing)
+			if err != nil {
+				return err
+			}
+			crd.ResourceVersion = existing.ResourceVersion
 
 			// TODO: do we want to respect what's already there?
 			if err := r.Update(ctx, &crd); err != nil {
@@ -247,21 +303,23 @@ func (r *Reconciler) process(
 	}
 	api.Status.Resources = resourceStatuses
 
-	cm := api.Status.ConditionManager()
-	cm.MarkTrue(kudzu.APIApplied)
-	cm.MarkTrue(kudzu.APIUpdated)
+	api.Status.ConditionManager().MarkTrue(kudzu.APIApplied)
+	api.Status.ConditionManager().MarkTrue(kudzu.APIUpdated)
+	log.Debug("Marked API as ready", zap.Bool("ready", api.Status.IsReady()))
 
 	return nil
 }
 
 func (r *Reconciler) Finalize(ctx context.Context, log *zap.Logger, api *kudzu.API) (reconcile.Result, error) {
+	log.Info("Finalizing API")
+
 	crds, err := r.crds(ctx, api)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	if len(crds) > 0 {
-		log.Info("Finalizing; deleting CRDs")
+		log.Info("Deleting CRDs")
 	}
 
 	for _, crd := range crds {
@@ -275,7 +333,7 @@ func (r *Reconciler) Finalize(ctx context.Context, log *zap.Logger, api *kudzu.A
 		}
 	}
 
-	if crds, err := r.crds(ctx, api); err != nil && len(crds) == 0 {
+	if crds, err := r.crds(ctx, api); err == nil && len(crds) == 0 {
 		finalizers, changed := util.RemoveFinalizer(api.Finalizers)
 		if changed {
 			api.Finalizers = finalizers

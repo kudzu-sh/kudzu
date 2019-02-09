@@ -20,4 +20,5 @@ type Object interface {
 
 	GetSourceSpec() *kudzu.SourceSpec
 	GetSourceStatus() *kudzu.SourceStatus
+	SetSourceStatus(status *kudzu.SourceStatus)
 }
